@@ -1,9 +1,9 @@
-<script src="<%= js_source(@js_host, @version, 'pusher.js') %>"></script>
+<script src="<%= js_source(@js_host, h(@version), 'pusher.js') %>"></script>
 
 <div class="row-fluid">
   <div class="span9">
     <div id="controls">
-      <a href="/hello?env=<%= @env.name %>" class="btn btn-primary ajax"
+      <a href="/hello?env=<%= h(@env.name) %>" class="btn btn-primary ajax"
          data-loading-text="Loading...">
         Trigger (AJAX)
       </a>
@@ -18,7 +18,9 @@
         <a href="#" id="disconnect" class="btn">Disconnect</a>
       </span>
 
-      <% if @ssl %>
+      <% if @force_ssl %>
+        <div class="btn disabled">SSL on</div>
+      <% elsif @ssl %>
         <%= link_to "SSL off", test_query_string(ssl: false), class: 'btn' %>
       <% else %>
         <%= link_to "SSL on", test_query_string(ssl: true), class: 'btn' %>
@@ -33,7 +35,7 @@
   </div>
 
   <div class="span3">
-    <h3>Using version <%= @version %></h3>
+    <h3>Using version <%=h @version %></h3>
 
     <% if @version >= '1.7.0' %>
     <p>
@@ -46,10 +48,20 @@
     </p>
     <% end %>
 
+    <% if @version >= '1.4.0' %>
+      <h4>Choose cluster</h4>
+
+      <select name="env" id="cluster-choice">
+        <% @public_clusters.each do |cluster_shortcode| %>
+          <option value="<%= cluster_shortcode %>" <%= @env.name.to_s == cluster_shortcode.to_s ? 'selected="selected"' : '' %>><%= cluster_shortcode %></option>
+        <% end %>
+      </select>
+    <% end %>
+
     <% if @version >= '2.0.0' %>
       <h4>Select transports</h4>
       <ul id="transports">
-        <% ["ws", "flash", "xhr_streaming", "xdr_streaming", "xhr_polling", "xdr_polling", "sockjs"].each do |transport| %>
+        <% supported_transports(@version).each do |transport| %>
           <li>
             <input type="checkbox" id="transport_<%= transport %>">
             <%= transport %>
@@ -72,7 +84,7 @@
 
     <ul>
       <% files(@version).each do |file| %>
-        <li><%= link_to file, js_source(@js_host, @version, file) %></li>
+        <li><%= link_to file, js_source(@js_host, h(@version), file) %></li>
       <% end %>
     </ul>
 
@@ -101,15 +113,21 @@ $(document).ready(function() {
   Pusher.sockjs_https_port = <%= @env[:sockjs_https_port] %>;
 
   <% if @version >= "2.0.0" %>
-    bindTransportCheckboxes(<%= @ssl %>, <%= JSON.generate(@transports) %>);
+    bindTransportCheckboxes('<%= @version %>', <%= @ssl %>, <%= JSON.generate(@selected_transports) %>);
   <% end %>
 
   bindLogCheckboxes(logger.types);
 
+  $('#cluster-choice').change(function() {
+    var chosenCluster = $(this).find(":selected").text();
+    window.location.href = '/?env=' + chosenCluster;
+  })
+
   run({
-    key: "<%= @env[:key] %>",
+    name: <%= @env.name.inspect %>,
+    key: <%= @env[:key].inspect %>,
     encrypted: <%= @ssl %>,
-    version: <%= @version.to_s.split(".") %>
+    version: "<%= h(@version.to_s.split(".")) %>"
   });
 });
 </script>

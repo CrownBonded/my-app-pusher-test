@@ -26,16 +26,22 @@ function logMessage(msg) {
   logger.log('message', JSON.stringify(msg));
 }
 
-function bindTransportCheckboxes(encrypted, enabledTransports) {
-  var transports = {
-    ws: Pusher.WSTransport,
-    flash: Pusher.FlashTransport,
-    sockjs: Pusher.SockJSTransport,
-    xhr_streaming: Pusher.XHRStreamingTransport,
-    xdr_streaming: Pusher.XDRStreamingTransport,
-    xhr_polling: Pusher.XHRPollingTransport,
-    xdr_polling: Pusher.XDRPollingTransport
-  };
+function bindTransportCheckboxes(version, encrypted, enabledTransports) {
+
+  if (version >= "3.1.0") {
+    var transports = Pusher.Runtime.Transports;
+  } else {
+    var transports = {
+      ws: Pusher.WSTransport,
+      flash: Pusher.FlashTransport,
+      sockjs: Pusher.SockJSTransport,
+      xhr_streaming: Pusher.XHRStreamingTransport,
+      xdr_streaming: Pusher.XDRStreamingTransport,
+      xhr_polling: Pusher.XHRPollingTransport,
+      xdr_polling: Pusher.XDRPollingTransport
+    };
+  }
+
 
   function getCheckboxCallback(checkbox, transport) {
     var isSupportedDefault = transport.isSupported;
@@ -97,7 +103,7 @@ function run(env) {
   });
 
   $('#client').click(function() {
-    console.log(channel);
+
     channel.trigger('client-event', { data: 'hello client' });
   });
 
@@ -129,7 +135,11 @@ function run(env) {
 
   if (compareVersions(env.version, [1,5,0]) >= 0 && env.encrypted) {
     pusher = new Pusher(env.key, {
-      encrypted: true
+      encrypted: true,
+      auth: {
+        params: { "env": env.name }
+      },
+      cluster: env.name
     });
     channel = pusher.subscribe('presence-channel');
     channel.bind("event", function(data) {
@@ -139,7 +149,7 @@ function run(env) {
       alert(data);
     });
   } else if (compareVersions(env.version, [1,4,0]) >= 0) {
-    pusher = new Pusher(env.key);
+
     channel = pusher.subscribe('presence-channel');
     channel.bind("event", function(data) {
       logMessage(data);

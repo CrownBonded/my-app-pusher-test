@@ -31,6 +31,11 @@ class Environment
     CONFIG.keys
   end
 
+  def self.list_public
+    public_clusters = [:mt1, :ap1, :eu]
+    CONFIG.keys.select { |k| public_clusters.include?(k) }
+  end
+
   def initialize(name)
     @name = name
     env_config = CONFIG[name.to_sym] || raise("Unknown config")
@@ -72,7 +77,9 @@ VERSIONS = %w{1.1 1.2 1.2.1 1.3 1.4 1.4.1 1.4.2 1.4.3 1.5.0 1.5.1
   1.12.0 1.12.1 1.12.2 1.12.3 1.12.4 1.12.5 1.12.6 1.12.7
   2.0.0 2.0.1 2.0.2 2.0.3 2.0.4 2.0.5 2.0.6 2.0.7 2.0.8 2.0.9 2.0.10 2.0.11
   2.1.0 2.1.1 2.1.2 2.1.3 2.1.4 2.1.5 2.1.6
-  2.2.0 2.2.1 2.2.2 2.2.3
+  2.2.0 2.2.1 2.2.2 2.2.3 2.2.4
+  3.0.0 3.1.0 3.2.0 3.2.1 3.2.2 3.2.3 3.2.4
+  4.0.0 4.1.0
 }
 
 get '/favicon.ico' do
@@ -82,13 +89,21 @@ end
 
 get '/' do
   @ssl, version = test_config.values_at(:ssl, :version)
-  @ssl = @ssl || false
+  if request.secure?
+    @force_ssl = true
+    @ssl = true
+  else
+    @ssl = @ssl || false
+  end
+
   @version = Version.new(version)
   @env = begin
     pusher_env
   rescue
-    return "Unknown environment #{params[:env]}. Please add to config.yml."
+    return "Unknown environment #{h(params[:env])}. Please add to config.yml."
   end
+
+  @public_clusters = Environment.list_public
 
   @js_host = if params[:js_host]
     # You're probably developing the js and won't be serving it over ssl
@@ -100,9 +115,9 @@ get '/' do
   enabled_transports = if params[:transports].is_a?(Array)
     params[:transports]
   else
-    ["ws", "flash", "xhr_streaming", "xdr_streaming", "xhr_polling", "xdr_polling", "sockjs"]
+    supported_transports(@version)
   end
-  @transports = Hash[enabled_transports.map { |t| [t, true] }]
+  @selected_transports = Hash[enabled_transports.map { |t| [t, true] }]
 
   erb :public
 end
@@ -115,9 +130,7 @@ end
 
 post '/pusher/auth' do
   content_type :json
-  pusher_env.client[params[:channel_name]].authenticate(params[:socket_id], {
-    :user_id => 1
-  }).to_json
+
 end
 
 # Legacy route
@@ -127,7 +140,7 @@ end
 
 helpers do
   def pusher_env
-    Environment.new(params[:env] || "default")
+    Environment.new(params[:env] || "mt1")
   end
 
   def link_to(name, url, options = {})
@@ -135,7 +148,9 @@ helpers do
   end
 
   def files(version)
-    if version >= '1.12.4'
+    if version >= '3.0.0'
+      %w{pusher.js pusher.min.js json2.js json2.min.js sockjs.js sockjs.min.js}
+    elsif version >= '1.12.4'
       %w{pusher.js pusher.min.js flashfallback.js flashfallback.min.js json2.js
          json2.min.js sockjs.js sockjs.min.js WebSocketMain.swf}
     elsif version >= '1.6.2'
@@ -147,6 +162,14 @@ helpers do
       %w{pusher.js}
     end
   end
+  
+  def supported_transports(version)
+    if version >= '3.0.0'
+      %w{ws xhr_streaming xdr_streaming xhr_polling xdr_polling sockjs}
+    else
+      %w{ws flash xhr_streaming xdr_streaming xhr_polling xdr_polling sockjs}
+    end
+  end
 
   def js_source(js_host, version, file)
     "#{js_host}/#{version}/#{file}"
@@ -154,7 +177,7 @@ helpers do
 
   def test_config(options = {})
     {
-      env: params[:env] || 'default',
+      env: params[:env] || 'mt1',
       version: params[:version] || VERSIONS.last,
       ssl: params.key?("ssl") || nil,
       js_host: params[:js_host],
@@ -164,5 +187,9 @@ helpers do
 
   def test_query_string(options)
     "?#{Rack::Utils.build_nested_query(test_config(options))}"
+  end
+
+  def h(text)
+    Rack::Utils.escape_html(text)
   end
 end
